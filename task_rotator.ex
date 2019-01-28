@@ -1,13 +1,17 @@
-defmodule Font do
+defmodule Terminal do
   def bold(text) do
-    "#{IO.ANSI.bright}#{text}#{IO.ANSI.normal}"
+    IO.puts "#{IO.ANSI.bright}#{text}#{IO.ANSI.normal}"
+  end
+
+  def clear do
+    IO.puts IO.ANSI.clear
   end
 end
 
 defmodule TerminalTaskRotator do
   def menu() do
-    IO.ANSI.clear
-    IO.puts Font.bold("Menu")
+    Terminal.clear
+    Terminal.bold("Menu")
     IO.puts "[P] Projects"
     IO.puts "[T] Tasks"
     IO.puts "[E] Exit"
@@ -27,29 +31,56 @@ defmodule Project do
 # [$] ${project_name} ${project status}
 # [A] Add project
 # [B] Back
-  def menu(state_pid \\ Project.start_state) do
-    IO.puts Font.bold("Projects")
+  def menu do
+    state_pid = Project.build_state
 
+    Terminal.clear
+    Terminal.bold("Projects")
+    Project.list state_pid
+    IO.puts "[A] Add project"
+    IO.puts "[B] Back"
 
-    State.stop state_pid
+    Project.clear_state state_pid
   end
 
-  def start_state do
-    State.start_link(Project.import) |> elem(1)
+  def build_state do
+    ps = Project.import
+    State.start_link(ps) |> elem(1)
   end
 
   def import do
     file_t = File.read "projects.db"
     if file_t |> elem(0) == :ok do
-      ["FILLED"]
+      { Project_t.new("Projeto 1", false), Project_t.new("Projeto 2", true) }
     else
-      []
+      { Project_t.new("Projeto 1", false), Project_t.new("Projeto 2", true) }
     end
+  end
+
+  def list(state_pid) do
+    projects = State.all state_pid
+    item projects, projects |> tuple_size
+  end
+
+  def item(id \\ 0, projects, size) do
+    if id < size do
+      project = projects |> elem(id)
+      IO.puts "[#{id}] #{project.name} #{ if project.status, do: '-> Done' }"
+      item id + 1, projects, size
+    end
+  end
+
+  def clear_state(state_pid) do
+    State.stop state_pid
   end
 end
 
 defmodule Project_t do
-  defstruct name: ""
+  defstruct name: nil, status: nil
+
+  def new(name, status) do
+    %Project_t{ name: name, status: status }
+  end
 end
 
 defmodule State do
@@ -68,7 +99,7 @@ defmodule State do
     { :reply, state, state }
   end
 
-  def handle_call({ :push, item }, _, state) do
+  def handle_call({ :add, item }, _, state) do
     { :reply, state, state ++ [item] }
   end
 
@@ -77,8 +108,8 @@ defmodule State do
     GenServer.call pid, :all
   end
 
-  def push(pid, item) do
-    GenServer.call pid, { :push, item }
+  def add(pid, item) do
+    GenServer.call pid, { :add, item }
   end
 
   def stop(pid) do
