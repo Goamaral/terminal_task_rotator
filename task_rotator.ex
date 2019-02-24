@@ -6,6 +6,15 @@ defmodule Terminal do
   def clear do
     IO.puts IO.ANSI.clear
   end
+
+  def ask_option do
+    IO.write "\nOption: "
+    IO.gets("") |> String.trim
+  end
+
+  def ask_input(question) do
+    IO.gets(question) |> String.trim
+  end
 end
 
 defmodule TerminalTaskRotator do
@@ -16,9 +25,9 @@ defmodule TerminalTaskRotator do
     IO.puts "[T] Tasks"
     IO.puts "[E] Exit"
 
-    IO.write "\nOption: "
+    op = Terminal.ask_option
 
-    case IO.read(1) do
+    case op do
       "P" -> Project.menu
       #'T' -> Task.menu
       _ -> :ok
@@ -27,20 +36,46 @@ defmodule TerminalTaskRotator do
 end
 
 defmodule Project do
-### Projects ###
-# [$] ${project_name} ${project status}
-# [A] Add project
-# [B] Back
+  ### Projects ###
+  # [$] ${project_name} ${project status}
+  # [A] Add project
+  # [B] Back
   def menu do
     state_pid = Project.build_state
 
     Terminal.clear
-    Terminal.bold("Projects")
+    Terminal.bold "Projects"
     Project.list state_pid
     IO.puts "[A] Add project"
     IO.puts "[B] Back"
 
+    option = Terminal.ask_option
+    option_int = Integer.parse option
+    option_int = if option_int != :error, do: option_int |> elem(0), else: :error
+
+    if option_int != :error && option_int < State.count state_pid do
+      IO.puts "IS A NUMBER #{option_int}" # HERE
+    end
+
+    case option do
+      "A" -> :ok
+      _ -> :ok
+    end
+
     Project.clear_state state_pid
+  end
+
+  def list(state_pid) do
+    projects = State.all state_pid
+    list_item projects, projects |> tuple_size
+  end
+
+  def list_item(id \\ 0, projects, size) do
+    if id < size do
+      project = projects |> elem(id)
+      IO.puts "[#{id}] #{project.name} #{ if project.done, do: '-> Done' }"
+      list_item id + 1, projects, size
+    end
   end
 
   def build_state do
@@ -57,29 +92,16 @@ defmodule Project do
     end
   end
 
-  def list(state_pid) do
-    projects = State.all state_pid
-    item projects, projects |> tuple_size
-  end
-
-  def item(id \\ 0, projects, size) do
-    if id < size do
-      project = projects |> elem(id)
-      IO.puts "[#{id}] #{project.name} #{ if project.status, do: '-> Done' }"
-      item id + 1, projects, size
-    end
-  end
-
   def clear_state(state_pid) do
     State.stop state_pid
   end
 end
 
 defmodule Project_t do
-  defstruct name: nil, status: nil
+  defstruct name: nil, done: nil
 
-  def new(name, status) do
-    %Project_t{ name: name, status: status }
+  def new(name, done) do
+    %Project_t{ name: name, done: done }
   end
 end
 
@@ -100,7 +122,11 @@ defmodule State do
   end
 
   def handle_call({ :add, item }, _, state) do
-    { :reply, state, state ++ [item] }
+    { :reply, state, Tuple.append(state, item) }
+  end
+
+  def handle_call(:count, _, state) do
+    { :reply, state |> tuple_size, state }
   end
 
   # API
@@ -112,16 +138,16 @@ defmodule State do
     GenServer.call pid, { :add, item }
   end
 
+  def count(pid) do
+    GenServer.call pid, :count
+  end
+
   def stop(pid) do
     GenServer.stop pid
   end
 end
 
 TerminalTaskRotator.menu
-
-
-### Add project ###
-# Name: ...
 
 ### ${project_name} ###
 # [E] Edit
