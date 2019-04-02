@@ -13,12 +13,12 @@ defmodule Terminal do
   end
 
   def ask_input(question) do
-    IO.gets(question) |> String.trim
+    IO.gets("#{question} ") |> String.trim
   end
 end
 
 defmodule TerminalTaskRotator do
-  def menu() do
+  def index() do
     Terminal.clear
     Terminal.bold("Menu")
     IO.puts "[P] Projects"
@@ -27,11 +27,14 @@ defmodule TerminalTaskRotator do
 
     op = Terminal.ask_option
 
-    case op do
-      "P" -> Project.menu
-      #'T' -> Task.menu
+    status = case op do
+      "P" -> Project.index
+      #'T' -> Task.index
+      "E" -> :exit
       _ -> :ok
     end
+
+    if status != :exit, do: index()
   end
 end
 
@@ -40,8 +43,11 @@ defmodule Project do
   # [$] ${project_name} ${project status}
   # [A] Add project
   # [B] Back
-  def menu do
-    state_pid = Project.build_state
+  def index(state_pid \\ nil) do
+    state_pid = cond do
+      state_pid == nil -> Project.build_state
+      true -> state_pid
+    end
 
     Terminal.clear
     Terminal.bold "Projects"
@@ -53,26 +59,73 @@ defmodule Project do
     option_int = Integer.parse option
     option_int = if option_int != :error, do: option_int |> elem(0), else: :error
 
-    if option_int != :error && option_int < State.count state_pid do
-      IO.puts "IS A NUMBER #{option_int}" # HERE
+    status = if option_int != :error && option_int < State.count state_pid do
+      show state_pid, option_int
+      true
+    else
+      case option do
+        "A" -> :ok
+        "B" -> :exit
+        _ -> :ok
+      end
     end
 
-    case option do
-      "A" -> :ok
+    if status != :exit do
+      index state_pid
+    else
+      Project.clear_state state_pid
+    end
+  end
+
+  ### ${project_name} ###
+  # [E] Edit
+  # [D] Delete
+  # [B] Back
+  def show(state_pid, id) do
+    project = State.get(state_pid, id)
+
+    Terminal.clear
+    Terminal.bold project.name
+    IO.puts "[E] Edit"
+    IO.puts "[D] Delete"
+    IO.puts "[B] Back"
+
+    option = Terminal.ask_option
+
+    status = case option do
+      "E" -> edit(state_pid, id)
+      "D" -> :ok
+      "B" -> :exit
       _ -> :ok
     end
 
-    Project.clear_state state_pid
+    if status != :exit, do: show state_pid, id
+  end
+
+  ### Edit ${project_name} ###
+  # Name(${project_name}): ...
+  def edit(state_pid, id) do
+    project = State.get(state_pid, id)
+
+    Terminal.clear
+    Terminal.bold "Edit #{project.name}"
+    new_name = Terminal.ask_input("Name(#{project.name}):") |> String.trim
+    project = cond do
+      new_name != "" -> %{ project | name: new_name }
+      true -> project
+    end
+
+    State.update state_pid, id, project
   end
 
   def list(state_pid) do
     projects = State.all state_pid
-    list_item projects, projects |> tuple_size
+    list_item 0, projects, State.count state_pid
   end
 
-  def list_item(id \\ 0, projects, size) do
+  def list_item(id, projects, size) do
     if id < size do
-      project = projects |> elem(id)
+      project = projects |> Enum.at(id)
       IO.puts "[#{id}] #{project.name} #{ if project.done, do: '-> Done' }"
       list_item id + 1, projects, size
     end
@@ -86,9 +139,9 @@ defmodule Project do
   def import do
     file_t = File.read "projects.db"
     if file_t |> elem(0) == :ok do
-      { Project_t.new("Projeto 1", false), Project_t.new("Projeto 2", true) }
+      [ Project_t.new("Projeto 1", false), Project_t.new("Projeto 2", true) ]
     else
-      { Project_t.new("Projeto 1", false), Project_t.new("Projeto 2", true) }
+      [ Project_t.new("Projeto 1", false), Project_t.new("Projeto 2", true) ]
     end
   end
 
@@ -122,11 +175,19 @@ defmodule State do
   end
 
   def handle_call({ :add, item }, _, state) do
-    { :reply, state, Tuple.append(state, item) }
+    { :reply, state, state ++ [item] }
   end
 
   def handle_call(:count, _, state) do
-    { :reply, state |> tuple_size, state }
+    { :reply, state |> Enum.count(), state }
+  end
+
+  def handle_call({ :get, id }, _, state) do
+    { :reply, state |> Enum.at(id), state }
+  end
+
+  def handle_call({ :update, id, new }, _, state) do
+    { :reply, state, List.replace_at(state, id, new) }
   end
 
   # API
@@ -145,17 +206,17 @@ defmodule State do
   def stop(pid) do
     GenServer.stop pid
   end
+
+  def get(pid, id) do
+    GenServer.call pid, { :get, id }
+  end
+
+  def update(pid, id, new) do
+    GenServer.call pid, { :update, id, new }
+  end
 end
 
-TerminalTaskRotator.menu
-
-### ${project_name} ###
-# [E] Edit
-# [D] Delete
-# [B] Back
-
-### Edit ${project_name} ###
-# Name(${project_name}): ...
+TerminalTaskRotator.index
 
 ### Tasks ###
 # [G] Get next task
