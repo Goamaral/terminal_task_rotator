@@ -22,19 +22,31 @@ defmodule TerminalTaskRotator do
     Terminal.clear
     Terminal.bold("Menu")
     IO.puts "[P] Projects"
-    IO.puts "[T] Tasks"
+    # IO.puts "[T] Tasks"
     IO.puts "[E] Exit"
 
     op = Terminal.ask_option
 
     status = case op do
       "P" -> Project.index
-      #'T' -> Task.index
+      "T" -> Task.index
       "E" -> :exit
       _ -> :ok
     end
 
     if status != :exit, do: index()
+  end
+end
+
+defmodule Task do
+  ### Tasks ###
+  # [G] Get next task
+  # [L] List tasks
+  # [B] Back
+  def index() do
+    Terminal.clear
+    Terminal.bold "Menu"
+
   end
 end
 
@@ -70,10 +82,10 @@ defmodule Project do
       end
     end
 
-    if status != :exit do
-      index state_pid
-    else
+    if status == :exit do
       Project.clear_state state_pid
+    else
+      Project.index state_pid
     end
   end
 
@@ -94,12 +106,26 @@ defmodule Project do
 
     status = case option do
       "E" -> edit(state_pid, id)
-      "D" -> :ok
+      "D" -> delete(state_pid, id)
       "B" -> :exit
       _ -> :ok
     end
 
-    if status != :exit, do: show state_pid, id
+    if status == :ok, do: show(state_pid, id)
+  end
+
+  ### Delete ${project_name} ###
+  def delete(state_pid, id) do
+    project = State.get(state_pid, id)
+
+    Terminal.clear
+    Terminal.bold "Delete #{project.name}"
+    option = Terminal.ask_input("Are you sure, you want to delete?([y/N])") |> String.trim
+
+    case option do
+      "y" -> State.delete(state_pid, id)
+      _ -> :ok
+    end
   end
 
   ### Edit ${project_name} ###
@@ -115,7 +141,7 @@ defmodule Project do
       true -> project
     end
 
-    State.update state_pid, id, project
+    State.update(state_pid, id, project)
   end
 
   def list(state_pid) do
@@ -126,7 +152,7 @@ defmodule Project do
   def list_item(id, projects, size) do
     if id < size do
       project = projects |> Enum.at(id)
-      IO.puts "[#{id}] #{project.name} #{ if project.done, do: '-> Done' }"
+      IO.puts "[#{id}] #{project.name} #{ if project.complete, do: '-> Completed' }"
       list_item id + 1, projects, size
     end
   end
@@ -151,10 +177,10 @@ defmodule Project do
 end
 
 defmodule Project_t do
-  defstruct name: nil, done: nil
+  defstruct name: nil, complete: nil
 
-  def new(name, done) do
-    %Project_t{ name: name, done: done }
+  def new(name, complete) do
+    %Project_t{ name: name, complete: complete }
   end
 end
 
@@ -190,6 +216,11 @@ defmodule State do
     { :reply, state, List.replace_at(state, id, new) }
   end
 
+  def handle_call({ :delete, id }, _, state) do
+    new_state = List.pop_at(state, id) |> elem(1)
+    { :reply, :deleted, new_state }
+  end
+
   # API
   def all(pid) do
     GenServer.call pid, :all
@@ -214,17 +245,16 @@ defmodule State do
   def update(pid, id, new) do
     GenServer.call pid, { :update, id, new }
   end
+
+  def delete(pid, id) do
+    GenServer.call pid, { :delete, id }
+  end
 end
 
 TerminalTaskRotator.index
 
-### Tasks ###
-# [G] Get next task
-# [L] List ordered tasks
-# [B] Back
-
 ### ${project_name} ###
-# [D] Done
+# [D] Mark as complete
 # [B] Back
 
 ### Task list ###
