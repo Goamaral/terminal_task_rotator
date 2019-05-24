@@ -18,52 +18,86 @@ defmodule Terminal do
 end
 
 defmodule TerminalTaskRotator do
-  def index() do
+  def index(state_pid \\ nil) do
+    state_pid = cond do
+      state_pid == nil -> build_state()
+      true -> state_pid
+    end
+
     Terminal.clear
-    Terminal.bold("Menu")
+    Terminal.bold "Menu"
     IO.puts "[P] Projects"
-    # IO.puts "[T] Tasks"
+    IO.puts "[T] Tasks"
     IO.puts "[E] Exit"
 
     op = Terminal.ask_option
 
     status = case op do
-      "P" -> Project.index
-      "T" -> Task.index
+      "P" -> ProjectMenu.index state_pid
+      "T" -> TaskMenu.index state_pid
       "E" -> :exit
       _ -> :ok
     end
 
-    if status != :exit, do: index()
+    if status == :exit do
+      clear_state state_pid
+    else
+      index state_pid
+    end
+  end
+
+  def build_state do
+    ps = import_state()
+    State.start_link(ps) |> elem(1)
+  end
+
+  def import_state do
+    file_t = File.read "projects.db"
+    if file_t |> elem(0) == :ok do
+      [ Project.new("Projeto 1", false), Project.new("Projeto 2", true) ]
+    else
+      [ Project.new("Projeto 1", false), Project.new("Projeto 2", true) ]
+    end
+  end
+
+  def clear_state(state_pid) do
+    State.stop state_pid
   end
 end
 
-defmodule Task do
+defmodule TaskMenu do
   ### Tasks ###
   # [G] Get next task
   # [L] List tasks
   # [B] Back
-  def index() do
+  def index(state_pid) do
     Terminal.clear
-    Terminal.bold "Menu"
+    Terminal.bold "Tasks"
+    IO.puts "[G] Get next task"
+    IO.puts "[L] List tasks"
+    IO.puts "[B] Back"
 
+    op = Terminal.ask_option
+
+    status = case op do
+      "G" -> :ok
+      "L" -> :ok
+      "B" -> :exit
+    end
+
+    if status == :ok, do: index(state_pid)
   end
 end
 
-defmodule Project do
+defmodule ProjectMenu do
   ### Projects ###
   # [$] ${project_name} ${project status}
   # [A] Add project
   # [B] Back
-  def index(state_pid \\ nil) do
-    state_pid = cond do
-      state_pid == nil -> Project.build_state
-      true -> state_pid
-    end
-
+  def index(state_pid) do
     Terminal.clear
     Terminal.bold "Projects"
-    Project.list state_pid
+    ProjectMenu.list state_pid
     IO.puts "[A] Add project"
     IO.puts "[B] Back"
 
@@ -73,20 +107,37 @@ defmodule Project do
 
     status = if option_int != :error && option_int < State.count state_pid do
       show state_pid, option_int
-      true
     else
       case option do
-        "A" -> :ok
+        "A" -> add state_pid
         "B" -> :exit
         _ -> :ok
       end
     end
 
-    if status == :exit do
-      Project.clear_state state_pid
-    else
-      Project.index state_pid
+    if status == :ok, do: index(state_pid)
+  end
+
+  ### Add project ###
+  # Name: ...
+  def add(state_pid, msg \\ nil) do
+    Terminal.clear
+    Terminal.bold "Add project"
+    if msg != nil, do: IO.puts msg
+
+    name = Terminal.ask_input("Name:") |> String.trim
+    project = cond do
+      name != "" ->  Project.new name
+      :ok -> nil
     end
+
+    if project != nil do
+      State.add state_pid, project
+    else
+      add(state_pid, "Name can't be blank")
+    end
+
+    :ok
   end
 
   ### ${project_name} ###
@@ -156,31 +207,13 @@ defmodule Project do
       list_item id + 1, projects, size
     end
   end
-
-  def build_state do
-    ps = Project.import
-    State.start_link(ps) |> elem(1)
-  end
-
-  def import do
-    file_t = File.read "projects.db"
-    if file_t |> elem(0) == :ok do
-      [ Project_t.new("Projeto 1", false), Project_t.new("Projeto 2", true) ]
-    else
-      [ Project_t.new("Projeto 1", false), Project_t.new("Projeto 2", true) ]
-    end
-  end
-
-  def clear_state(state_pid) do
-    State.stop state_pid
-  end
 end
 
-defmodule Project_t do
+defmodule Project do
   defstruct name: nil, complete: nil
 
-  def new(name, complete) do
-    %Project_t{ name: name, complete: complete }
+  def new(name, complete \\ false) do
+    %Project{ name: name, complete: complete }
   end
 end
 
