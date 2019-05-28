@@ -1,6 +1,22 @@
 defmodule Terminal do
-  def bold(text) do
-    IO.puts "#{IO.ANSI.bright}#{text}#{IO.ANSI.normal}"
+  def bold(text, print \\ true) do
+    str = "#{IO.ANSI.bright}#{text}#{IO.ANSI.reset}"
+
+    if print do
+      IO.puts str
+    else
+      str
+    end
+  end
+
+  def error(text, print \\ true) do
+    str = "#{IO.ANSI.light_red}#{text}#{IO.ANSI.reset}"
+
+    if print do
+      IO.puts str
+    else
+      str
+    end
   end
 
   def clear do
@@ -53,10 +69,11 @@ defmodule TerminalTaskRotator do
 
   def import_state do
     file_t = File.read "projects.db"
+    today = Date.utc_today()
     if file_t |> elem(0) == :ok do
-      [ Project.new("Projeto 1", false), Project.new("Projeto 2", true) ]
+      [ Project.new("Projeto 1", Date.add(today, 2)), Project.new("Projeto 2", Date.add(today, 2), 0, true) ]
     else
-      [ Project.new("Projeto 1", false), Project.new("Projeto 2", true) ]
+      [ Project.new("Projeto 1", Date.add(today, 2)), Project.new("Projeto 2", Date.add(today, 2), 0, true) ]
     end
   end
 
@@ -120,27 +137,56 @@ defmodule ProjectMenu do
 
   ### Add project ###
   # Name: ...
-  def add(state_pid, msg \\ nil) do
+  def add(state_pid, msgs \\ []) do
     Terminal.clear
     Terminal.bold "Add project"
-    if msg != nil, do: IO.puts msg
+    if msgs != [], do: Terminal.error(Enum.join(msgs, "\n"))
+    msgs = []
 
     name = Terminal.ask_input("Name:") |> String.trim
+    name_valid = name != ""
+
+    msgs = unless name_valid do
+      msgs ++ ["Name can't be blank"]
+    else
+      msgs
+    end
+
+    priority_s = Terminal.ask_input("Priority(Smaller is more urgent):") |> String.trim
+    priority_valid = priority_s != ""
+
+    priority = if priority_valid do
+      Integer.parse(priority_s) |> elem(0)
+    else
+      nil
+    end
+
+    msgs = unless priority_valid do
+      msgs ++ ["Priority not valid"]
+    else
+      msgs
+    end
+
     project = cond do
-      name != "" ->  Project.new name
+      msgs == [] ->  Project.new name, Date.utc_today, priority
       :ok -> nil
     end
 
     if project != nil do
       State.add state_pid, project
     else
-      add(state_pid, "Name can't be blank")
+      add(state_pid, msgs)
     end
 
     :ok
   end
 
-  ### ${project_name} ###
+  ### Project ###
+  # Name: ${project_name}
+  # Due date: ${project_due_date}
+  # Priority: ${project_priority}
+  # Complete: ${project_complete}
+  #
   # [E] Edit
   # [D] Delete
   # [B] Back
@@ -148,7 +194,13 @@ defmodule ProjectMenu do
     project = State.get(state_pid, id)
 
     Terminal.clear
-    Terminal.bold project.name
+    Terminal.bold "Project"
+    IO.puts "Name: #{project.name}"
+    IO.puts "Due date: #{project.due_date}"
+    IO.puts "Priority: #{project.priority}"
+    IO.puts "Complete: #{project.complete}"
+    IO.puts ""
+
     IO.puts "[E] Edit"
     IO.puts "[D] Delete"
     IO.puts "[B] Back"
@@ -162,7 +214,11 @@ defmodule ProjectMenu do
       _ -> :ok
     end
 
-    if status == :ok, do: show(state_pid, id)
+    if status == :ok do
+      show(state_pid, id)
+    else
+      status
+    end
   end
 
   ### Delete ${project_name} ###
@@ -210,10 +266,10 @@ defmodule ProjectMenu do
 end
 
 defmodule Project do
-  defstruct name: nil, complete: nil
+  defstruct name: "", complete: false, due_date: Date.utc_today, priority: 0
 
-  def new(name, complete \\ false) do
-    %Project{ name: name, complete: complete }
+  def new(name \\ "", due_date \\ Date.utc_today, priority \\ 0, complete \\ false) do
+    %Project{ name: name, complete: complete, priority: priority, due_date: due_date }
   end
 end
 
@@ -285,11 +341,3 @@ defmodule State do
 end
 
 TerminalTaskRotator.index
-
-### ${project_name} ###
-# [D] Mark as complete
-# [B] Back
-
-### Task list ###
-# [$] ${project_name}
-# [B] Back
