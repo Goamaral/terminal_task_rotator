@@ -31,34 +31,27 @@ defmodule Terminal do
   def ask_input(question) do
     IO.gets("#{question} ") |> String.trim
   end
+
+  def parse_int(str) do
+    case Integer.parse(str) do
+      {int, _} -> {int, true}
+      _ -> {0, false}
+    end
+  end
 end
 
-defmodule TerminalTaskRotator do
-  def index(state_pid \\ nil) do
+defmodule Router do
+  def go_to(route \\ :home, state_pid \\ nil) do
     state_pid = cond do
       state_pid == nil -> build_state()
       true -> state_pid
     end
 
-    Terminal.clear
-    Terminal.bold "Menu"
-    IO.puts "[P] Projects"
-    IO.puts "[T] Tasks"
-    IO.puts "[E] Exit"
-
-    op = Terminal.ask_option
-
-    status = case op do
-      "P" -> ProjectMenu.index state_pid
-      "T" -> TaskMenu.index state_pid
-      "E" -> :exit
-      _ -> :ok
-    end
-
-    if status == :exit do
-      clear_state state_pid
-    else
-      index state_pid
+    case route do
+      :home -> TerminalTaskRotator.index(state_pid)
+      :projects -> ProjectMenu.index(state_pid)
+      :tasks -> TaskMenu.index(state_pid)
+      :exit -> clear_state(state_pid)
     end
   end
 
@@ -82,6 +75,25 @@ defmodule TerminalTaskRotator do
   end
 end
 
+defmodule TerminalTaskRotator do
+  def index(state_pid) do
+    Terminal.clear
+    Terminal.bold "Menu"
+    IO.puts "[P] Projects"
+    IO.puts "[T] Tasks"
+    IO.puts "[E] Exit"
+
+    op = Terminal.ask_option
+
+    case op do
+      "P" -> Router.go_to(:projects, state_pid)
+      "T" -> Router.go_to(:tasks, state_pid)
+      "E" -> Router.go_to(:exit, state_pid)
+      _ -> index(state_pid)
+    end
+  end
+end
+
 defmodule TaskMenu do
   ### Tasks ###
   # [G] Get next task
@@ -96,13 +108,11 @@ defmodule TaskMenu do
 
     op = Terminal.ask_option
 
-    status = case op do
-      "G" -> :ok
-      "L" -> :ok
-      "B" -> :exit
+    case op do
+      #"G" -> :ok
+      #"L" -> :ok
+      "B" -> Router.go_to(:home, state_pid)
     end
-
-    if status == :ok, do: index(state_pid)
   end
 end
 
@@ -118,21 +128,18 @@ defmodule ProjectMenu do
     IO.puts "[A] Add project"
     IO.puts "[B] Back"
 
-    option = Terminal.ask_option
-    option_int = Integer.parse option
-    option_int = if option_int != :error, do: option_int |> elem(0), else: :error
+    option_s = Terminal.ask_option
+    {option, option_valid} = Terminal.parse_int(option_s)
 
-    status = if option_int != :error && option_int < State.count state_pid do
-      show state_pid, option_int
+    if option_valid && option < State.count state_pid do
+      show state_pid, option
     else
-      case option do
-        "A" -> add state_pid
-        "B" -> :exit
-        _ -> :ok
+      case option_s do
+        "A" -> add(state_pid); Router.go_to(:projects, state_pid)
+        "B" -> :home; Router.go_to(:home, state_pid)
+        _ -> index(state_pid)
       end
     end
-
-    if status == :ok, do: index(state_pid)
   end
 
   ### Add project ###
@@ -140,6 +147,7 @@ defmodule ProjectMenu do
   def add(state_pid, msgs \\ []) do
     Terminal.clear
     Terminal.bold "Add project"
+
     if msgs != [], do: Terminal.error(Enum.join(msgs, "\n"))
     msgs = []
 
@@ -152,14 +160,9 @@ defmodule ProjectMenu do
       msgs
     end
 
-    priority_s = Terminal.ask_input("Priority(Smaller is more urgent):") |> String.trim
-    priority_valid = priority_s != ""
-
-    priority = if priority_valid do
-      Integer.parse(priority_s) |> elem(0)
-    else
-      nil
-    end
+    priority = Terminal.ask_input("Priority(0-10, Smaller is less urgent):") |> String.trim
+    {priority, priority_valid} = Terminal.parse_int(priority)
+    priority_valid = priority_valid && priority <= 10 && priority >= 0
 
     msgs = unless priority_valid do
       msgs ++ ["Priority not valid"]
@@ -167,18 +170,34 @@ defmodule ProjectMenu do
       msgs
     end
 
+    due_date = Terminal.ask_input("Due date(yyyy-mm-dd):") |> String.trim |> String.split("-")
+    due_date = Enum.map(due_date, fn part -> Terminal.parse_int(part) end)
+    due_date_valid = Enum.map(due_date, fn part -> elem(part, 1) end)
+    due_date_valid = Enum.reduce(due_date_valid, fn part, acc -> acc && part end)
+    due_date = Enum.map(due_date, fn part -> elem(part, 0) end)
+    due_date = List.to_tuple(due_date)
+    due_date = %Date {
+      year: elem(due_date, 0),
+      month: elem(due_date, 1),
+      day: elem(due_date, 2)
+    }
+
+    msgs = unless due_date_valid do
+      msgs ++ ["Date not valid"]
+    else
+      msgs
+    end
+
     project = cond do
-      msgs == [] ->  Project.new name, Date.utc_today, priority
+      msgs == [] -> Project.new(name, due_date, priority)
       :ok -> nil
     end
 
     if project != nil do
       State.add state_pid, project
     else
-      add(state_pid, msgs)
+      add state_pid, msgs
     end
-
-    :ok
   end
 
   ### Project ###
@@ -207,17 +226,11 @@ defmodule ProjectMenu do
 
     option = Terminal.ask_option
 
-    status = case option do
-      "E" -> edit(state_pid, id)
-      "D" -> delete(state_pid, id)
-      "B" -> :exit
-      _ -> :ok
-    end
-
-    if status == :ok do
-      show(state_pid, id)
-    else
-      status
+    case option do
+      "E" -> edit(state_pid, id); Router.go_to(:projects, state_pid)
+      "D" -> delete(state_pid, id); Router.go_to(:projects, state_pid)
+      "B" -> Router.go_to(:projects, state_pid)
+      _ -> show(state_pid, id)
     end
   end
 
@@ -237,18 +250,75 @@ defmodule ProjectMenu do
 
   ### Edit ${project_name} ###
   # Name(${project_name}): ...
-  def edit(state_pid, id) do
+  def edit(state_pid, id, msgs \\ []) do
     project = State.get(state_pid, id)
 
     Terminal.clear
     Terminal.bold "Edit #{project.name}"
-    new_name = Terminal.ask_input("Name(#{project.name}):") |> String.trim
-    project = cond do
-      new_name != "" -> %{ project | name: new_name }
-      true -> project
+
+    if msgs != [], do: Terminal.error(Enum.join(msgs, "\n"))
+    msgs = []
+
+    name = Terminal.ask_input("Name(#{project.name}):") |> String.trim
+    name = if name == "" do
+      project.name
+    else
+      name
     end
 
-    State.update(state_pid, id, project)
+    priority = Terminal.ask_input("Priority(#{project.priority}):") |> String.trim
+    {priority, priority_valid} = if priority == "" do
+      {project.priority, true}
+    else
+      {priority, priority_valid} = Terminal.parse_int(priority)
+      {priority, priority_valid && priority <= 10 && priority >= 0}
+    end
+
+    msgs = unless priority_valid do
+      msgs ++ ["Priority not valid"]
+    else
+      msgs
+    end
+
+    due_date = Terminal.ask_input("Due date(#{project.due_date}):") |> String.trim
+    {due_date, due_date_valid} = if due_date == "" do
+      {project.due_date, true}
+    else
+      due_date = due_date |> String.split("-")
+      due_date = Enum.map(due_date, fn part -> Terminal.parse_int(part) end)
+      due_date_valid = Enum.map(due_date, fn part -> elem(part, 1) end)
+      due_date_valid = Enum.reduce(due_date_valid, fn part, acc -> acc && part end)
+      due_date = Enum.map(due_date, fn part -> elem(part, 0) end)
+      due_date = List.to_tuple(due_date)
+      if tuple_size(due_date) == 3 do
+        due_date = %Date {
+          year: elem(due_date, 0),
+          month: elem(due_date, 1),
+          day: elem(due_date, 2)
+        }
+        {due_date, due_date_valid}
+      else
+        {due_date, false}
+      end
+
+    end
+
+    msgs = unless due_date_valid do
+      msgs ++ ["Date not valid"]
+    else
+      msgs
+    end
+
+    project = cond do
+      msgs == [] -> %{ project | name: name, due_date: due_date, priority: priority }
+      :ok -> nil
+    end
+
+    if project != nil do
+      State.update state_pid, id, project
+    else
+      edit state_pid, id, msgs
+    end
   end
 
   def list(state_pid) do
@@ -340,4 +410,4 @@ defmodule State do
   end
 end
 
-TerminalTaskRotator.index
+Router.go_to(:home)
