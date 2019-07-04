@@ -109,10 +109,19 @@ defmodule TaskMenu do
     op = Terminal.ask_option
 
     case op do
-      #"G" -> :ok
-      #"L" -> :ok
+      "G" -> next(state_pid); Router.go_to(:tasks, state_pid)
+      "L" -> list(state_pid); Router.go_to(:tasks, state_pid)
       "B" -> Router.go_to(:home, state_pid)
     end
+  end
+
+  def next(state_id) do
+    project = State.next(state_pid)
+    # TODO: Display task
+  end
+
+  def list(state_id) do
+    # TODO: Display uncompleted projects sorted by score
   end
 end
 
@@ -341,6 +350,18 @@ defmodule Project do
   def new(name \\ "", due_date \\ Date.utc_today, priority \\ 0, complete \\ false) do
     %Project{ name: name, complete: complete, priority: priority, due_date: due_date }
   end
+
+  def score(project) do
+    days = Date.diff(Date.utc_today, project.due_date) + 1
+    date_comparation = Date.compare(project.due_date, Date.utc_today)
+    priority = project.priority + 1
+
+    if date_comparation == :lt do
+      days * priority
+    else
+      priority / days
+    end
+  end
 end
 
 defmodule State do
@@ -380,6 +401,29 @@ defmodule State do
     { :reply, :deleted, new_state }
   end
 
+  def handle_call(:next, _, state) do
+    next = Enum.reduce([nil | state], fn project, acc ->
+      if acc != nil do
+        if project.complete do
+          acc
+        else
+          acc_score = Project.score(acc)
+          project_score = Project.score(project)
+
+          if project_score > acc_score do
+            project
+          else
+            acc
+          end
+        end
+      else
+        project
+      end
+    end)
+
+    { :reply, next, state }
+  end
+
   # API
   def all(pid) do
     GenServer.call pid, :all
@@ -407,6 +451,10 @@ defmodule State do
 
   def delete(pid, id) do
     GenServer.call pid, { :delete, id }
+  end
+
+  def next(pid) do
+    GenServer.call pid, :next
   end
 end
 
