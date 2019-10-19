@@ -66,7 +66,7 @@ defmodule Router do
   end
 
   def import_state do
-    file_t = File.read "projects.db"
+    file_t = File.read "projects.json"
     today = Date.utc_today()
     if file_t |> elem(0) == :ok do
       [ Project.new("Projeto 1", Date.add(today, 2)), Project.new("Projeto 2", Date.add(today, 2), 0, true) ]
@@ -516,4 +516,10 @@ defmodule State do
   end
 end
 
-Router.go_to(:home)
+defmodule App do
+  use Application
+
+  def start(_type, _args) do
+    Router.go_to
+  end
+end
