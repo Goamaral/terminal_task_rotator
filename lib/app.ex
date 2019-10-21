@@ -521,5 +521,6 @@ defmodule App do
 
   def start(_type, _args) do
     Router.go_to
+    {:ok, self() }
   end
 end
