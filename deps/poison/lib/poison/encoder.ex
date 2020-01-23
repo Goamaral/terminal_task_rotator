@@ -170,7 +170,7 @@ defimpl Poison.Encoder, for: BitString do
 
   @compile {:inline, seq: 1}
   defp seq(char) do
-    case Integer.to_char_list(char, 16) do
+    case Integer.to_charlist(char, 16) do
       s when length(s) < 2 -> ["\\u000" | s]
       s when length(s) < 3 -> ["\\u00" | s]
       s when length(s) < 4 -> ["\\u0" | s]

@@ -1,4 +1,4 @@
-defmodule Tmp.MixProject do
+defmodule TerminalTaskRotator.MixProject do
   use Mix.Project
 
   def project do
