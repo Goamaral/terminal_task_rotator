@@ -1,6 +1,5 @@
 ### TODO ###
 # Read projects from file
-# Save projects to file on exit
 # Split in different files
 
 defmodule Terminal do
@@ -56,7 +55,9 @@ defmodule Router do
       :home -> TerminalTaskRotator.index(state_pid)
       :projects -> ProjectMenu.index(state_pid)
       :tasks -> TaskMenu.index(state_pid)
-      :exit -> clear_state(state_pid)
+      :exit -> 
+        export_state(state_pid)
+        clear_state(state_pid)
     end
   end
 
@@ -77,6 +78,10 @@ defmodule Router do
 
   def clear_state(state_pid) do
     State.stop state_pid
+  end
+
+  def export_state(state_pid) do
+    File.write("projects.json", Poison.encode!(State.all(state_pid)))
   end
 end
 
@@ -398,6 +403,7 @@ defmodule ProjectMenu do
 end
 
 defmodule Project do
+  @derive [Poison.Encoder]
   defstruct name: "", complete: false, due_date: Date.utc_today, priority: 0
 
   def new(name \\ "", due_date \\ Date.utc_today, priority \\ 0, complete \\ false) do

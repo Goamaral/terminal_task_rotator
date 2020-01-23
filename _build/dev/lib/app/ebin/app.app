@@ -1,9 +1,10 @@
 {application,app,
              [{applications,[kernel,stdlib,elixir,logger,poison]},
               {description,"app"},
-              {modules,['Elixir.App','Elixir.Project','Elixir.ProjectMenu',
-                        'Elixir.Router','Elixir.State','Elixir.TaskMenu',
-                        'Elixir.Terminal','Elixir.TerminalTaskRotator']},
+              {modules,['Elixir.App','Elixir.Poison.Encoder.Project',
+                        'Elixir.Project','Elixir.ProjectMenu','Elixir.Router',
+                        'Elixir.State','Elixir.TaskMenu','Elixir.Terminal',
+                        'Elixir.TerminalTaskRotator']},
               {vsn,"0.1.0"},
               {registered,['Elixir.State']},
               {mod,{'Elixir.App',[]}}]}.
