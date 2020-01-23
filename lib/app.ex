@@ -1,6 +1,29 @@
 ### TODO ###
-# Read projects from file
 # Split in different files
+
+defmodule Project do
+  @derive [Poison.Encoder]
+  defstruct name: "", complete: false, due_date: Date.utc_today, priority: 0
+
+  def new(name \\ "", due_date \\ Date.utc_today, priority \\ 0, complete \\ false) do
+    %Project{ name: name, complete: complete, priority: priority, due_date: due_date }
+  end
+
+  def score(project) do
+    days = Date.diff(project.due_date, Date.utc_today)
+    priority = project.priority + 1
+
+    if days < 0 do
+      -1 * days * priority
+    else 
+      if days > 0 do
+        priority / days
+      else
+        priority
+      end
+    end
+  end
+end
 
 defmodule Terminal do
   def bold(text, print \\ true) do
@@ -70,9 +93,9 @@ defmodule Router do
     file_t = File.read "projects.json"
     today = Date.utc_today()
     if file_t |> elem(0) == :ok do
-      [ Project.new("Projeto 1", Date.add(today, 2)), Project.new("Projeto 2", Date.add(today, 2), 0, true) ]
+      Poison.decode!(file_t |> elem(1), as: [%Project{}])
     else
-      [ Project.new("Projeto 1", Date.add(today, 2)), Project.new("Projeto 2", Date.add(today, 2), 0, true) ]
+      []
     end
   end
 
@@ -398,30 +421,6 @@ defmodule ProjectMenu do
       project = projects |> Enum.at(id)
       IO.puts "[#{id}] #{project.name} #{ if project.complete, do: '-> Completed' }"
       list_item id + 1, projects, size
-    end
-  end
-end
-
-defmodule Project do
-  @derive [Poison.Encoder]
-  defstruct name: "", complete: false, due_date: Date.utc_today, priority: 0
-
-  def new(name \\ "", due_date \\ Date.utc_today, priority \\ 0, complete \\ false) do
-    %Project{ name: name, complete: complete, priority: priority, due_date: due_date }
-  end
-
-  def score(project) do
-    days = Date.diff(project.due_date, Date.utc_today)
-    priority = project.priority + 1
-
-    if days < 0 do
-      -1 * days * priority
-    else 
-      if days > 0 do
-        priority / days
-      else
-        priority
-      end
     end
   end
 end
